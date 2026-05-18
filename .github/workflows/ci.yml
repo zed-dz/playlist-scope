@@ -1,0 +1,71 @@
+name: Build, Test, Deploy
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: playlist-scope-app
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: playlist-scope-app/package-lock.json
+
+      - name: Install
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      - name: Install Playwright
+        run: |
+          npx -y playwright@1.56 install --with-deps chromium
+
+      - name: Static serve + Playwright QA
+        run: |
+          python3 -m http.server 4173 --bind 127.0.0.1 --directory dist > /tmp/srv.log 2>&1 &
+          sleep 2
+          curl -fsS http://127.0.0.1:4173/ -o /dev/null
+          # Run the same QA suite that catches all 0-findings cases
+          python3 ../scripts/qa.py http://127.0.0.1:4173
+        shell: bash
+
+      - name: Upload dist artifact
+        if: github.ref == 'refs/heads/main'
+        uses: actions/upload-artifact@v4
+        with:
+          name: playlist-scope-dist
+          path: playlist-scope-app/dist
+
+  deploy-netlify:
+    needs: build-and-test
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: playlist-scope-dist
+          path: dist
+
+      - name: Deploy to Netlify
+        uses: nwtgck/actions-netlify@v3.0
+        with:
+          publish-dir: dist
+          production-branch: main
+          deploy-message: "Deploy ${{ github.sha }}"
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+        env:
+          NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
+          NETLIFY_SITE_ID: ${{ secrets.NETLIFY_SITE_ID }}
+        timeout-minutes: 5
