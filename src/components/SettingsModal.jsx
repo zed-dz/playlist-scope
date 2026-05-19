@@ -3,13 +3,16 @@ import Modal from './Modal.jsx';
 import Icon from './Icon.jsx';
 import { useToast } from './Toast.jsx';
 
+const STORAGE_KEY = 'llm_api_key';
+const LEGACY_KEY = 'anthropic_api_key';
+
 export default function SettingsModal({ onClose }) {
   const [apiKey, setApiKey] = useState('');
   const toast = useToast();
 
   useEffect(() => {
     try {
-      setApiKey(localStorage.getItem('anthropic_api_key') || '');
+      setApiKey(localStorage.getItem(STORAGE_KEY) || localStorage.getItem(LEGACY_KEY) || '');
     } catch {}
   }, []);
 
@@ -17,16 +20,18 @@ export default function SettingsModal({ onClose }) {
     try {
       const trimmed = apiKey.trim();
       if (trimmed) {
-        const isAnthropic = trimmed.startsWith('sk-ant-');
         const isGemini = trimmed.startsWith('AIza');
-        if (!isAnthropic && !isGemini) {
-          toast.push("Doesn't look like an Anthropic (sk-ant-) or Gemini (AIza) key", { type: 'warn' });
+        const isAnthropic = trimmed.startsWith('sk-ant-');
+        if (!isGemini && !isAnthropic) {
+          toast.push("Doesn't look like a Gemini (AIza…) or Anthropic (sk-ant-…) key", { type: 'warn' });
           return;
         }
-        localStorage.setItem('anthropic_api_key', trimmed); // historical key name; holds either provider
+        localStorage.setItem(STORAGE_KEY, trimmed);
+        try { localStorage.removeItem(LEGACY_KEY); } catch {}
         toast.push(`${isGemini ? 'Gemini' : 'Anthropic'} key saved locally`, { type: 'success' });
       } else {
-        localStorage.removeItem('anthropic_api_key');
+        localStorage.removeItem(STORAGE_KEY);
+        try { localStorage.removeItem(LEGACY_KEY); } catch {}
         toast.push('API key removed', { type: 'success' });
       }
       onClose();
@@ -43,7 +48,7 @@ export default function SettingsModal({ onClose }) {
           <button onClick={onClose} className="btn-icon"><Icon name="x" /></button>
         </div>
         <p className="text-sm mb-5" style={{ color: 'var(--text-2)' }}>
-          AI features need an LLM API key. The server proxy at <code className="font-mono text-xs">/api/claude</code> supports both Gemini (free) and Anthropic (paid).
+          AI features run on <strong style={{ color: 'var(--accent-bright)' }}>Google Gemini's free tier</strong> — 1,500 requests/day, no credit card required. The server proxy never calls a paid Claude API by default.
         </p>
 
         <div className="space-y-4">
@@ -51,41 +56,35 @@ export default function SettingsModal({ onClose }) {
             <h3 className="font-medium mb-2" style={{ color: 'var(--text-0)' }}>How auth works</h3>
             <ul className="text-xs space-y-2" style={{ color: 'var(--text-1)' }}>
               <li>
-                <strong style={{ color: 'var(--accent-bright)' }}>Site-owner Gemini (recommended):</strong> set <code className="font-mono" style={{ color: 'var(--accent)' }}>GEMINI_API_KEY</code> in Netlify env vars. Free tier: 1,500 req/day, no credit card. Get a key at <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener" style={{ color: 'var(--accent-bright)' }}>aistudio.google.com/apikey</a>.
+                <strong style={{ color: 'var(--accent-bright)' }}>Free Gemini (recommended):</strong> set <code className="font-mono" style={{ color: 'var(--accent)' }}>GEMINI_API_KEY</code> in Netlify env vars, <em>or</em> paste a Gemini key below. Free tier: 1,500 req/day, no credit card. Grab a key in 30 seconds at <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener" style={{ color: 'var(--accent-bright)' }}>aistudio.google.com/apikey</a>.
               </li>
               <li>
-                <strong style={{ color: 'var(--accent-bright)' }}>Site-owner Anthropic:</strong> set <code className="font-mono" style={{ color: 'var(--accent)' }}>ANTHROPIC_API_KEY</code>. Pay-as-you-go after $5 free credit. Required for MCP exports (Notion/Drive/Gmail).
-              </li>
-              <li>
-                <strong style={{ color: 'var(--accent-bright)' }}>In Claude.ai's artifact viewer:</strong> auth flows from your Claude session. No key needed.
-              </li>
-              <li>
-                <strong style={{ color: 'var(--accent-bright)' }}>Bring-your-own-key (this panel):</strong> paste a Gemini (<code className="font-mono text-xs">AIza…</code>) or Anthropic (<code className="font-mono text-xs">sk-ant-…</code>) key. Stored in browser only.
+                <strong style={{ color: 'var(--text-2)' }}>Anthropic (only if you need MCP exports):</strong> set <code className="font-mono" style={{ color: 'var(--text-2)' }}>ANTHROPIC_API_KEY</code>. Required only for Notion/Drive/Gmail exports — every other feature runs fine on the free Gemini path.
               </li>
             </ul>
           </div>
 
           <div>
             <label className="text-xs uppercase tracking-wider mb-2 block" style={{ color: 'var(--text-3)' }}>
-              LLM API key — Gemini (AIza…) or Anthropic (sk-ant-…)
+              Free Gemini API key — paste here
             </label>
             <input
               type="password"
               value={apiKey}
               onChange={e => setApiKey(e.target.value)}
-              placeholder="AIza… or sk-ant-…"
+              placeholder="AIza…"
               className="input-base font-mono w-full"
               autoComplete="off"
               spellCheck={false}
             />
             <p className="text-xs mt-2" style={{ color: 'var(--text-2)' }}>
-              Get a free Gemini key at <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener" style={{ color: 'var(--accent-bright)' }}>aistudio.google.com/apikey</a> (no credit card). Or an Anthropic key at <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener" style={{ color: 'var(--accent-bright)' }}>console.anthropic.com</a>.
+              Get one at <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener" style={{ color: 'var(--accent-bright)' }}>aistudio.google.com/apikey</a> — free, no credit card, takes under a minute.
             </p>
           </div>
 
           <div className="card p-3" style={{ background: 'var(--bg-2)' }}>
             <p className="text-xs" style={{ color: 'var(--text-2)' }}>
-              <strong style={{ color: 'var(--text-1)' }}>Privacy:</strong> The key is stored only in your browser's localStorage, never sent anywhere except directly to api.anthropic.com. Clear it by emptying the field and saving.
+              <strong style={{ color: 'var(--text-1)' }}>Privacy:</strong> Your key is stored only in this browser's localStorage, then forwarded to the same-origin <code className="font-mono">/api/claude</code> proxy with each request. Clear it any time by emptying the field and saving.
             </p>
           </div>
 

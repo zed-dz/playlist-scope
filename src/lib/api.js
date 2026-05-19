@@ -1,38 +1,23 @@
-// Anthropic API helpers + MCP export wrappers.
+// LLM API helpers — always routed through the same-origin proxy at /api/claude.
 //
-// Routing strategy:
-//   1. In Claude.ai's artifact viewer, direct calls to api.anthropic.com work
-//      because auth is auto-injected by the runtime.
-//   2. On the deployed Netlify site, CORS blocks direct browser calls. We fall
-//      back to a same-origin proxy at /api/claude (Netlify Function) which
-//      adds the server-side API key.
-//   3. If the user has set their own key in localStorage, it's forwarded as
-//      x-user-api-key (the proxy uses it when no env var is set).
+// The proxy (netlify/edge-functions/claude-proxy.js) prefers the free Gemini
+// tier (1,500 req/day, no credit card) and falls back to Anthropic only if a
+// Gemini key isn't configured. No direct browser-to-provider calls are made
+// from this file — that keeps the user's Claude.ai subscription out of the
+// loop and ensures we use the free path by default.
 //
-// Detection: we attempt direct first. If it fails with a CORS/network error
-// (TypeError: Failed to fetch), we switch to the proxy for the rest of the
-// session and remember that choice.
+// MCP exports (Notion/Drive/Gmail) still require an Anthropic key on the
+// server because Gemini doesn't speak MCP — the proxy 501s gracefully when
+// MCP is requested without an Anthropic key.
 
-const MODEL = 'claude-sonnet-4-20250514';
-const DIRECT_URL = 'https://api.anthropic.com/v1/messages';
 const PROXY_URL = '/api/claude';
-
-let routeMode = 'auto'; // 'auto' | 'direct' | 'proxy'
+const LEGACY_KEY = 'anthropic_api_key';
+const STORAGE_KEY = 'llm_api_key';
 
 function userApiKey() {
-  try { return localStorage.getItem('anthropic_api_key') || null; }
-  catch { return null; }
-}
-
-function directHeaders() {
-  const h = { 'Content-Type': 'application/json' };
-  const key = userApiKey();
-  if (key) {
-    h['x-api-key'] = key;
-    h['anthropic-version'] = '2023-06-01';
-    h['anthropic-dangerous-direct-browser-access'] = 'true';
-  }
-  return h;
+  try {
+    return localStorage.getItem(STORAGE_KEY) || localStorage.getItem(LEGACY_KEY) || null;
+  } catch { return null; }
 }
 
 function proxyHeaders() {
@@ -43,32 +28,16 @@ function proxyHeaders() {
 }
 
 async function dispatch(body, signal) {
-  // Try direct first when in 'auto' or 'direct' mode.
-  // Direct path only works for: (a) Claude.ai artifact context (auth auto-injected,
-  // no key in localStorage), or (b) user-provided Anthropic key (sk-ant-…) using
-  // the dangerous-direct-browser-access header. Gemini keys go via proxy.
-  const stored = userApiKey();
-  const isGeminiKey = stored && stored.startsWith('AIza');
-  if (routeMode !== 'proxy' && !isGeminiKey) {
-    try {
-      const r = await fetch(DIRECT_URL, { method: 'POST', headers: directHeaders(), body: JSON.stringify(body), signal });
-      if (r.ok || r.status >= 400) {
-        if (routeMode === 'auto') routeMode = 'direct';
-        return r;
-      }
-    } catch (e) {
-      if (routeMode === 'auto') {
-        routeMode = 'proxy';
-        console.info('[api] direct API blocked, switching to /api/claude proxy');
-      }
-    }
-  }
-  return fetch(PROXY_URL, { method: 'POST', headers: proxyHeaders(), body: JSON.stringify(body), signal });
+  return fetch(PROXY_URL, {
+    method: 'POST',
+    headers: proxyHeaders(),
+    body: JSON.stringify(body),
+    signal,
+  });
 }
 
 export async function callClaude({ prompt, maxTokens = 2000, tools = null, mcp_servers = null, system = null, signal = null }) {
   const body = {
-    model: MODEL,
     max_tokens: maxTokens,
     messages: [{ role: 'user', content: prompt }],
   };
@@ -94,10 +63,9 @@ export async function callClaudeWithSearch({ prompt, maxTokens = 4000 }) {
 }
 
 // MCP-aware caller. Throws if the model declined to invoke the tool, so callers
-// see real failures instead of silent no-ops.
+// see real failures instead of silent no-ops. Requires Anthropic on the server.
 export async function callClaudeMCP({ prompt, mcpServers, maxTokens = 2000 }) {
   const body = {
-    model: MODEL,
     max_tokens: maxTokens,
     messages: [{ role: 'user', content: prompt }],
     mcp_servers: mcpServers,

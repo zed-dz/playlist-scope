@@ -23,7 +23,7 @@ export default function EnrichmentPanel({ agent, onOpenSettings, hasApiKey }) {
           </div>
           <p className="text-sm" style={{ color: 'var(--text-2)' }}>
             {queueSize > 0
-              ? `${queueSize} video${queueSize !== 1 ? 's' : ''} still need${queueSize === 1 ? 's' : ''} transcripts. Claude will fetch them via web search, one at a time. Safe to leave running — progress saves as it goes.`
+              ? `${queueSize} video${queueSize !== 1 ? 's' : ''} still need${queueSize === 1 ? 's' : ''} transcripts. The free Gemini tier will fetch them via Google Search grounding, one at a time. Safe to leave running — progress saves as it goes.`
               : 'All videos enriched.'}
           </p>
         </div>
@@ -81,12 +81,11 @@ export default function EnrichmentPanel({ agent, onOpenSettings, hasApiKey }) {
         }}>
           <div className="font-medium mb-2" style={{ color: 'var(--danger)' }}>No LLM API key configured</div>
           <div className="text-xs mb-2" style={{ color: 'var(--text-2)' }}>
-            The server proxy at <code className="font-mono">/api/claude</code> needs an API key. Three paths:
+            The server proxy at <code className="font-mono">/api/claude</code> needs a free Gemini key. Two paths:
           </div>
           <ul className="text-xs space-y-1 mb-3 pl-4" style={{ color: 'var(--text-1)', listStyle: 'disc' }}>
-            <li><strong>Site owner sets Gemini key</strong> in Netlify env vars — free tier 1,500 req/day at <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener" style={{ color: 'var(--accent-bright)' }}>aistudio.google.com/apikey</a>. No credit card.</li>
-            <li><strong>Open the app in Claude.ai's artifact viewer</strong> — auth flows from your Claude session, no key needed.</li>
-            <li><strong>Paste a key in Settings</strong> — Gemini (AIza…) or Anthropic (sk-ant-…), stored only in your browser.</li>
+            <li><strong>Site owner sets it</strong> as <code className="font-mono">GEMINI_API_KEY</code> in Netlify env vars — free tier 1,500 req/day at <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener" style={{ color: 'var(--accent-bright)' }}>aistudio.google.com/apikey</a>. No credit card.</li>
+            <li><strong>Paste a Gemini key in Settings</strong> — stored only in your browser, takes 30 seconds.</li>
           </ul>
           {onOpenSettings && (
             <button className="btn-primary text-xs" onClick={onOpenSettings}>

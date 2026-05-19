@@ -144,7 +144,7 @@ function AppShell({ demoData }) {
   }, [activeId, library]);
 
   const agent = useEnrichmentAgent({ playlistId: activeId, data: activeData, onVideoEnriched });
-  const hasApiKey = (() => { try { return !!localStorage.getItem('anthropic_api_key'); } catch { return false; } })();
+  const hasApiKey = (() => { try { return !!(localStorage.getItem('llm_api_key') || localStorage.getItem('anthropic_api_key')); } catch { return false; } })();
 
   useEffect(() => {
     let cancelled = false;

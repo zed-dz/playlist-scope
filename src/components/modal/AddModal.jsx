@@ -160,7 +160,7 @@ export default function AddModal({ onClose, onAdd, defaultTab = 'video' }) {
             </div>
             <div className="text-xs flex items-start gap-2" style={{ color: 'var(--text-2)' }}>
               <Icon name="sparkles" size={14} className="mt-0.5 flex-shrink-0" />
-              <span>Claude will fetch the video's metadata + transcript using web search. Works for English, Arabic, French — any language YouTube provides captions for. Takes ~30 seconds per video.</span>
+              <span>The free Gemini tier will fetch the video's metadata + transcript using Google Search grounding. Works for English, Arabic, French — any language YouTube provides captions for. Takes ~30 seconds per video.</span>
             </div>
             {error && <div className="text-sm p-3 rounded" style={{ color: 'var(--danger)', background: 'rgba(224,123,106,0.08)' }}>{error}</div>}
             <button className="btn-primary w-full justify-center" onClick={handleAddVideo} disabled={!videoUrl.trim() || status === 'working'}>
