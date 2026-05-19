@@ -36,6 +36,40 @@ async function dispatch(body, signal) {
   });
 }
 
+// Parse the proxy's structured error envelope into a human-friendly message.
+// The proxy returns shapes like:
+//   { error: { type, provider, status, message, hint, providers_tried: [...] } }
+// We surface message + hint when available, and tag the provider for context.
+async function readError(response) {
+  let raw = '';
+  try { raw = await response.text(); } catch {}
+  let parsed = null;
+  try { parsed = JSON.parse(raw); } catch {}
+  const e = parsed?.error;
+  if (!e) return `HTTP ${response.status}: ${raw.slice(0, 200) || 'no response body'}`;
+
+  const providerTag = e.provider ? `[${e.provider}]` : '';
+  const kindLabel = ({
+    quota_exceeded: 'Daily quota exhausted',
+    rate_limit: 'Rate limit',
+    auth: 'Authentication failed',
+    invalid_request: 'Invalid request',
+    overload: 'Provider overloaded',
+    server_error: 'Upstream server error',
+    no_api_key: 'No API key configured',
+    mcp_needs_anthropic: 'MCP needs Anthropic',
+  })[e.type] || e.type || `HTTP ${response.status}`;
+
+  const parts = [`${providerTag} ${kindLabel}`.trim()];
+  if (e.message) parts.push(`— ${e.message}`);
+  if (e.hint) parts.push(`\nHint: ${e.hint}`);
+  if (Array.isArray(e.providers_tried) && e.providers_tried.length > 1) {
+    const chain = e.providers_tried.map(p => `${p.provider}: ${p.kind}`).join(' → ');
+    parts.push(`\nCascade: ${chain}`);
+  }
+  return parts.join(' ');
+}
+
 export async function callClaude({ prompt, maxTokens = 2000, tools = null, mcp_servers = null, system = null, signal = null }) {
   const body = {
     max_tokens: maxTokens,
@@ -47,8 +81,7 @@ export async function callClaude({ prompt, maxTokens = 2000, tools = null, mcp_s
 
   const response = await dispatch(body, signal);
   if (!response.ok) {
-    const err = await response.text();
-    throw new Error(`API ${response.status}: ${err.slice(0, 200)}`);
+    throw new Error(await readError(response));
   }
   const data = await response.json();
   return (data.content || []).filter(b => b.type === 'text').map(b => b.text).join('\n');
@@ -72,8 +105,7 @@ export async function callClaudeMCP({ prompt, mcpServers, maxTokens = 2000 }) {
   };
   const response = await dispatch(body, null);
   if (!response.ok) {
-    const err = await response.text();
-    throw new Error(`API ${response.status}: ${err.slice(0, 300)}`);
+    throw new Error(await readError(response));
   }
   const data = await response.json();
   const parts = [];
