@@ -573,3 +573,119 @@
   /* Misc helpers */
   .line-clamp-2 { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
   .line-clamp-3 { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+
+  /* ---------- Visualizations ---------- */
+  .mindmap-root {
+    padding: 1rem 0;
+  }
+  .mindmap-center {
+    text-align: center;
+    padding: 1.2rem 1.6rem;
+    margin: 0 auto 1.5rem;
+    max-width: 520px;
+    background: linear-gradient(135deg, var(--accent-soft), transparent);
+    border: 1px solid var(--accent-deep);
+    border-radius: 16px;
+    position: relative;
+  }
+  .mindmap-center::after {
+    content: '';
+    position: absolute;
+    left: 50%;
+    bottom: -16px;
+    width: 1px;
+    height: 16px;
+    background: var(--border-strong);
+  }
+  .mindmap-branches {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    gap: 1rem;
+  }
+  .mindmap-branch {
+    border: 1px solid var(--border-strong);
+    border-radius: 12px;
+    padding: 1rem 1.1rem;
+    background: var(--bg-1);
+  }
+  .mindmap-branch-label {
+    font-family: 'Instrument Serif', serif;
+    font-size: 1.15rem;
+    margin-bottom: 0.6rem;
+    line-height: 1.2;
+  }
+  .mindmap-children {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    border-left: 1px dashed var(--border-strong);
+    padding-left: 0.8rem;
+  }
+  .mindmap-children li {
+    position: relative;
+    padding: 0.3rem 0 0.3rem 0.6rem;
+    font-size: 0.85rem;
+    color: var(--text-1);
+    line-height: 1.4;
+  }
+  .mindmap-children li::before {
+    content: '';
+    position: absolute;
+    left: -0.8rem;
+    top: 0.85rem;
+    width: 0.6rem;
+    height: 1px;
+    background: var(--border-strong);
+  }
+  .mindmap-children .mindmap-children {
+    margin-top: 0.2rem;
+    padding-left: 0.7rem;
+  }
+  .mindmap-children .mindmap-children li {
+    font-size: 0.78rem;
+    color: var(--text-2);
+  }
+
+  .step-timeline {
+    position: relative;
+    padding-left: 2.2rem;
+  }
+  .step-timeline::before {
+    content: '';
+    position: absolute;
+    left: 0.95rem;
+    top: 0.5rem;
+    bottom: 0.5rem;
+    width: 1px;
+    background: linear-gradient(to bottom, var(--accent-deep), var(--border));
+  }
+  .step-node {
+    position: relative;
+    margin-bottom: 1rem;
+  }
+  .step-bullet {
+    position: absolute;
+    left: -2.2rem;
+    top: 0.4rem;
+    width: 2rem;
+    height: 2rem;
+    border-radius: 50%;
+    background: var(--bg-0);
+    border: 2px solid var(--accent);
+    color: var(--accent-bright);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.8rem;
+    font-weight: 600;
+  }
+  .step-body {
+    flex: 1;
+  }
+
+  @media print {
+    body { background: white !important; color: black !important; }
+    .modal-overlay { position: static !important; background: white !important; }
+    .modal-content { max-height: none !important; max-width: none !important; margin: 0 !important; border: none !important; }
+    .tab-btn, button.btn-ghost, button.btn-primary, .btn-icon { display: none !important; }
+  }

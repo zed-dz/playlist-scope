@@ -14,6 +14,7 @@ import QuotesTab from './tabs/Quotes.jsx';
 import NotesTab from './tabs/Notes.jsx';
 import VideoLinksTab from './tabs/VideoLinks.jsx';
 import AskTab from './tabs/Ask.jsx';
+import VisualizeTab from './tabs/Visualize.jsx';
 
 const TARGET_LANG_NAMES = { en: 'English', ar: 'Arabic', fr: 'French', es: 'Spanish', de: 'German', pt: 'Portuguese' };
 
@@ -250,6 +251,7 @@ ${ts}
     { id: 'quotes', label: 'Quotes' },
     { id: 'notes', label: 'Notes' },
     { id: 'links', label: 'Links' },
+    { id: 'visualize', label: <span className="flex items-center gap-1"><Icon name="layers" size={12} /> Visualize</span> },
     { id: 'ask', label: <span className="flex items-center gap-1"><Icon name="sparkles" size={12} /> Ask</span> },
   ];
 
@@ -308,6 +310,8 @@ ${ts}
           arabic={arabic} notesLocal={notesLocal} setNotesLocal={setNotesLocal}
           saveNotes={saveNotes} notesSaving={notesSaving} notesSaved={notesSaved} />}
         {tab === 'links' && <VideoLinksTab video={video} arabic={arabic} />}
+        {tab === 'visualize' && <VisualizeTab
+          video={video} transcriptObj={transcriptObj} lang={lang} arabic={arabic} toast={toast} />}
         {tab === 'ask' && <AskTab
           lang={lang} arabic={arabic}
           aiQuery={aiQuery} setAiQuery={setAiQuery}
