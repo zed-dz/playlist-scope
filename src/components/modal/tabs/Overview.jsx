@@ -1,7 +1,31 @@
+import { useState } from 'react';
+import Icon from '../../Icon.jsx';
 import { formatNum, formatChars } from '../../../lib/format.js';
 import { LANG_LABELS, langKey } from '../../../lib/i18n.js';
+import { ocrThumbnail } from '../../../lib/api.js';
 
 export default function OverviewTab({ video, lang, arabic }) {
+  const [ocrStatus, setOcrStatus] = useState('idle'); // idle|loading|done|error
+  const [ocrText, setOcrText] = useState(null);
+  const [ocrError, setOcrError] = useState(null);
+
+  const runOcr = async () => {
+    setOcrStatus('loading'); setOcrError(null);
+    try {
+      const text = await ocrThumbnail(video.id);
+      setOcrText(text || ''); setOcrStatus('done');
+    } catch (e) {
+      setOcrError(e.message); setOcrStatus('error');
+    }
+  };
+
+  const copyOcr = async () => {
+    if (!ocrText) return;
+    try { await navigator.clipboard.writeText(ocrText); } catch {}
+  };
+
+  const isEmpty = ocrText && /^\s*NO_TEXT\s*$/i.test(ocrText);
+
   return (
     <div className="grid grid-cols-1 lg:grid-cols-5 gap-6 animate-in">
       <div className="lg:col-span-3">
@@ -40,6 +64,47 @@ export default function OverviewTab({ video, lang, arabic }) {
             )}
           </div>
         </div>
+        <div className="card p-4">
+          <div className="flex items-center justify-between mb-3">
+            <div className="text-xs uppercase tracking-wider" style={{ color: 'var(--text-3)' }}>Thumbnail text</div>
+            {ocrStatus === 'done' && !isEmpty && (
+              <button className="btn-icon" onClick={copyOcr} title="Copy text"><Icon name="copy" size={12} /></button>
+            )}
+          </div>
+          <div className="rounded overflow-hidden mb-3" style={{ aspectRatio: '16/9', background: 'var(--bg-2)' }}>
+            <img src={`https://i.ytimg.com/vi/${video.id}/mqdefault.jpg`}
+                 alt="thumbnail"
+                 className="w-full h-full object-cover" />
+          </div>
+          {ocrStatus === 'idle' && (
+            <button className="btn-ghost w-full justify-center text-xs" onClick={runOcr}>
+              <Icon name="sparkles" size={12} /> Read text from thumbnail
+            </button>
+          )}
+          {ocrStatus === 'loading' && (
+            <div className="text-xs flex items-center gap-2 pulse-soft" style={{ color: 'var(--text-2)' }}>
+              <span className="spinner" /> Reading thumbnail with Gemini Vision…
+            </div>
+          )}
+          {ocrStatus === 'done' && !isEmpty && (
+            <pre className="text-xs p-3 rounded whitespace-pre-wrap font-mono"
+                 style={{ background: 'var(--bg-2)', color: 'var(--text-0)', maxHeight: 200, overflow: 'auto' }}>{ocrText}</pre>
+          )}
+          {ocrStatus === 'done' && isEmpty && (
+            <div className="text-xs" style={{ color: 'var(--text-2)' }}>No text detected on this thumbnail.</div>
+          )}
+          {ocrStatus === 'error' && (
+            <div className="text-xs p-2 rounded mb-2" style={{ color: 'var(--danger)', background: 'rgba(224,123,106,0.08)' }}>
+              {ocrError}
+            </div>
+          )}
+          {(ocrStatus === 'done' || ocrStatus === 'error') && (
+            <button className="btn-ghost w-full justify-center text-xs mt-2" onClick={runOcr}>
+              <Icon name="refresh" size={12} /> Re-read
+            </button>
+          )}
+        </div>
+
         {video.tools_mentioned && video.tools_mentioned.length > 0 && (
           <div className="card p-4">
             <div className="text-xs uppercase tracking-wider mb-3" style={{ color: 'var(--text-3)' }}>Tools Mentioned</div>

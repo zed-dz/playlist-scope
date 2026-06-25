@@ -156,11 +156,16 @@ function fromOpenAI(resp, providerLabel, modelLabel) {
 // ---------- Anthropic shape <-> Gemini shape ----------
 
 function toGemini(req) {
+  const partFor = (p) => {
+    if (p.type === 'text') return { text: p.text };
+    if (p.type === 'image' && p.source?.type === 'base64') {
+      return { inlineData: { mimeType: p.source.media_type || 'image/jpeg', data: p.source.data } };
+    }
+    return { text: JSON.stringify(p) };
+  };
   const contents = (req.messages || []).map(m => ({
     role: m.role === 'assistant' ? 'model' : 'user',
-    parts: typeof m.content === 'string'
-      ? [{ text: m.content }]
-      : (m.content || []).map(p => p.type === 'text' ? { text: p.text } : { text: JSON.stringify(p) }),
+    parts: typeof m.content === 'string' ? [{ text: m.content }] : (m.content || []).map(partFor),
   }));
   const userSystem = req.system ? req.system + '\n\n' : '';
   const fullSystem = userSystem + SYS_ANCHOR;
@@ -274,18 +279,34 @@ async function callAnthropic(rawBody, apiKey) {
 
 // ---------- Cascade builder ----------
 
+// Detect whether the request includes any image content blocks. Llama-based
+// providers (Groq/OpenRouter free tier/Cerebras) don't support vision on the
+// models we use, so vision requests are constrained to Gemini + Anthropic.
+function hasImageContent(parsed) {
+  for (const m of (parsed?.messages || [])) {
+    if (Array.isArray(m.content)) {
+      for (const p of m.content) {
+        if (p?.type === 'image') return true;
+      }
+    }
+  }
+  return false;
+}
+
 function buildCascade(parsed, clientKey) {
+  const visionOnly = hasImageContent(parsed);
   const chain = [];
   const seen = new Set();
-  const add = (provider, key, caller) => {
+  const add = (provider, key, caller, supportsVision = false) => {
     if (!key || seen.has(provider)) return;
+    if (visionOnly && !supportsVision) return;
     seen.add(provider);
     chain.push({ provider, key, caller });
   };
 
   // 1) User-supplied BYOK first (so users with their own quota burn that first)
   const byokProvider = detectProvider(clientKey);
-  if (byokProvider === 'gemini')     add('gemini',     clientKey, (req) => callGemini(req, clientKey));
+  if (byokProvider === 'gemini')     add('gemini',     clientKey, (req) => callGemini(req, clientKey), true);
   if (byokProvider === 'groq')       add('groq',       clientKey, (req) => callGroq(req, clientKey));
   if (byokProvider === 'openrouter') add('openrouter', clientKey, (req) => callOpenRouter(req, clientKey));
   if (byokProvider === 'cerebras')   add('cerebras',   clientKey, (req) => callCerebras(req, clientKey));
@@ -298,14 +319,14 @@ function buildCascade(parsed, clientKey) {
   const cerebrasKey   = envGet('CEREBRAS_API_KEY');
   const anthropicKey  = envGet('ANTHROPIC_API_KEY');
 
-  if (geminiKey)     add('gemini',     geminiKey,     (req) => callGemini(req, geminiKey));
+  if (geminiKey)     add('gemini',     geminiKey,     (req) => callGemini(req, geminiKey), true);
   if (groqKey)       add('groq',       groqKey,       (req) => callGroq(req, groqKey));
   if (openrouterKey) add('openrouter', openrouterKey, (req) => callOpenRouter(req, openrouterKey));
   if (cerebrasKey)   add('cerebras',   cerebrasKey,   (req) => callCerebras(req, cerebrasKey));
 
-  // 3) Anthropic last (paid)
-  if (anthropicKey)             add('anthropic', anthropicKey, null); // handled specially in main
-  else if (byokProvider === 'anthropic') add('anthropic', clientKey, null);
+  // 3) Anthropic last (paid). Anthropic supports vision.
+  if (anthropicKey)                      add('anthropic', anthropicKey, null, true);
+  else if (byokProvider === 'anthropic') add('anthropic', clientKey,    null, true);
 
   return chain;
 }

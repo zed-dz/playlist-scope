@@ -95,6 +95,80 @@ export async function callClaudeWithSearch({ prompt, maxTokens = 4000 }) {
   });
 }
 
+// Vision: send a prompt + image (base64) and return the model's text response.
+// Routed through the same /api/claude proxy — the proxy detects image content
+// and constrains the cascade to vision-capable providers (Gemini, Anthropic).
+export async function callClaudeVision({ prompt, imageBase64, mediaType = 'image/jpeg', maxTokens = 1500, signal = null }) {
+  const body = {
+    max_tokens: maxTokens,
+    messages: [{
+      role: 'user',
+      content: [
+        { type: 'image', source: { type: 'base64', media_type: mediaType, data: imageBase64 } },
+        { type: 'text', text: prompt },
+      ],
+    }],
+  };
+  const response = await dispatch(body, signal);
+  if (!response.ok) throw new Error(await readError(response));
+  const data = await response.json();
+  return (data.content || []).filter(b => b.type === 'text').map(b => b.text).join('\n');
+}
+
+// OCR the YouTube thumbnail for a video. Tries the highest-resolution variant
+// first, falls back through lower-res ones. Returns whatever text the model
+// reads off the thumbnail (titles, banners, captions), trimmed.
+export async function ocrThumbnail(videoId, { signal = null } = {}) {
+  const candidates = [
+    `https://i.ytimg.com/vi/${videoId}/maxresdefault.jpg`,
+    `https://i.ytimg.com/vi/${videoId}/sddefault.jpg`,
+    `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`,
+  ];
+
+  let lastErr = null;
+  let imageBase64 = null;
+  let mediaType = 'image/jpeg';
+
+  for (const url of candidates) {
+    try {
+      const res = await fetch(url, { signal });
+      if (!res.ok) { lastErr = `${url} → HTTP ${res.status}`; continue; }
+      const blob = await res.blob();
+      // YouTube serves a 120x90 placeholder when maxres doesn't exist — skip it.
+      if (blob.size < 2000) { lastErr = `${url} → ${blob.size}B placeholder`; continue; }
+      mediaType = blob.type || 'image/jpeg';
+      imageBase64 = await blobToBase64(blob);
+      break;
+    } catch (e) {
+      lastErr = `${url} → ${e.message}`;
+    }
+  }
+
+  if (!imageBase64) throw new Error(`Couldn't fetch any thumbnail variant: ${lastErr || 'unknown'}`);
+
+  const prompt = `Look at this YouTube video thumbnail and extract ALL visible text exactly as it appears (titles, banners, captions, callouts, on-screen labels). Preserve original capitalization and line breaks. If text is in a language other than English, transcribe it in the original script.
+
+If there is NO text on the thumbnail, respond with exactly: NO_TEXT
+
+If there is text, return ONLY the extracted text — no preamble, no quotes, no "the thumbnail says".`;
+
+  const result = await callClaudeVision({ prompt, imageBase64, mediaType, maxTokens: 800, signal });
+  return result.trim();
+}
+
+function blobToBase64(blob) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      const dataUrl = reader.result;
+      const comma = dataUrl.indexOf(',');
+      resolve(comma >= 0 ? dataUrl.slice(comma + 1) : dataUrl);
+    };
+    reader.onerror = () => reject(reader.error || new Error('FileReader failed'));
+    reader.readAsDataURL(blob);
+  });
+}
+
 // MCP-aware caller. Throws if the model declined to invoke the tool, so callers
 // see real failures instead of silent no-ops. Requires Anthropic on the server.
 export async function callClaudeMCP({ prompt, mcpServers, maxTokens = 2000 }) {

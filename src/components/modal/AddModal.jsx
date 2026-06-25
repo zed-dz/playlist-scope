@@ -1,8 +1,9 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import Modal from '../Modal.jsx';
 import Icon from '../Icon.jsx';
 import { useToast } from '../Toast.jsx';
 import { fetchSingleVideo, fetchPlaylist, buildPayloadFromVideos } from '../../lib/ingest.js';
+import { parseYouTubeUrl } from '../../lib/format.js';
 
 const INGEST_URL = import.meta.env.VITE_INGEST_URL ||
   (typeof window !== 'undefined' && (window.PS_INGEST_URL || window.localStorage?.getItem?.('ps_ingest_url'))) || '';
@@ -18,7 +19,33 @@ export default function AddModal({ onClose, onAdd, defaultTab = 'video' }) {
   const [progress, setProgress] = useState({ done: 0, total: 0, current: '' });
   const [error, setError] = useState('');
   const [dragOver, setDragOver] = useState(false);
+
+  // Batch mode state
+  const [batchInput, setBatchInput] = useState('');
+  const [batchName, setBatchName] = useState('');
+  const [batchItems, setBatchItems] = useState([]); // [{ id, url, status, title?, error? }]
+
   const toast = useToast();
+
+  // Parse the batch textarea into deduped { id, url } entries.
+  const parsedBatch = useMemo(() => {
+    if (!batchInput.trim()) return [];
+    const tokens = batchInput.split(/[\s,;]+/).map(t => t.trim()).filter(Boolean);
+    const seen = new Set();
+    const out = [];
+    const skipped = [];
+    for (const tok of tokens) {
+      const parsed = parseYouTubeUrl(tok);
+      if (!parsed || (parsed.type !== 'video' && parsed.type !== 'playlist_with_video') || !parsed.id) {
+        skipped.push(tok);
+        continue;
+      }
+      if (seen.has(parsed.id)) continue;
+      seen.add(parsed.id);
+      out.push({ id: parsed.id, url: `https://www.youtube.com/watch?v=${parsed.id}` });
+    }
+    return { items: out, skipped };
+  }, [batchInput]);
 
   const handleAddVideo = async () => {
     setStatus('working');
@@ -93,6 +120,59 @@ export default function AddModal({ onClose, onAdd, defaultTab = 'video' }) {
     }
   };
 
+  const handleAddBatch = async () => {
+    const items = parsedBatch.items || [];
+    if (items.length === 0) return;
+
+    setStatus('working');
+    setError('');
+    const tracking = items.map(it => ({ ...it, status: 'pending' }));
+    setBatchItems(tracking);
+    setProgress({ done: 0, total: items.length, current: '' });
+
+    const fetched = [];
+    for (let i = 0; i < items.length; i++) {
+      const it = items[i];
+      tracking[i] = { ...tracking[i], status: 'working' };
+      setBatchItems([...tracking]);
+      setProgress({ done: i, total: items.length, current: `Fetching #${i + 1}: ${it.id}` });
+      try {
+        const video = await fetchSingleVideo(it.url);
+        tracking[i] = { ...tracking[i], status: 'done', title: video.title || it.id };
+        setBatchItems([...tracking]);
+        fetched.push(video);
+      } catch (e) {
+        tracking[i] = { ...tracking[i], status: 'failed', error: e.message.slice(0, 200) };
+        setBatchItems([...tracking]);
+      }
+    }
+    setProgress({ done: items.length, total: items.length, current: '' });
+
+    if (fetched.length === 0) {
+      setError('Every URL in the batch failed. See per-URL errors above.');
+      setStatus('idle');
+      return;
+    }
+
+    const today = new Date().toLocaleDateString();
+    const title = batchName.trim() || `Batch import — ${today}`;
+    const payload = buildPayloadFromVideos(fetched, title, { url: '', id: `batch_${Date.now()}` });
+    const failedCount = items.length - fetched.length;
+    payload.synthesis_md = `# ${title}\n\n_Batch of ${items.length} URLs added on ${today} — ${fetched.length} succeeded${failedCount ? `, ${failedCount} failed` : ''}._\n\n## Videos in this batch\n\n${
+      fetched.map((v, i) => `${i + 1}. **${v.title || v.id}** — ${v.uploader || 'unknown'}`).join('\n')
+    }`;
+    const meta = {
+      title, source: 'batch', videoCount: fetched.length, language: 'mixed',
+    };
+    const id = await onAdd(meta, payload);
+    if (failedCount > 0) {
+      toast.push(`Batch added: ${fetched.length} videos imported, ${failedCount} failed`, { type: 'warn', duration: 8000 });
+    } else {
+      toast.push(`Batch added: ${fetched.length} videos`, { type: 'success' });
+    }
+    onClose(id);
+  };
+
   const handleBundleFile = (file) => {
     if (!file) return;
     if (!file.name.endsWith('.json')) {
@@ -144,8 +224,9 @@ export default function AddModal({ onClose, onAdd, defaultTab = 'video' }) {
           </div>
         )}
 
-        <div className="switch mb-5">
+        <div className="switch mb-5 flex-wrap">
           <button className={mode === 'video' ? 'active' : ''} onClick={() => setMode('video')}>Single video</button>
+          <button className={mode === 'batch' ? 'active' : ''} onClick={() => setMode('batch')}>Batch URLs</button>
           <button className={mode === 'playlist' ? 'active' : ''} onClick={() => setMode('playlist')}>Playlist URL</button>
           <button className={mode === 'bundle' ? 'active' : ''} onClick={() => setMode('bundle')}>Upload bundle</button>
         </div>
@@ -165,6 +246,92 @@ export default function AddModal({ onClose, onAdd, defaultTab = 'video' }) {
             {error && <div className="text-sm p-3 rounded" style={{ color: 'var(--danger)', background: 'rgba(224,123,106,0.08)' }}>{error}</div>}
             <button className="btn-primary w-full justify-center" onClick={handleAddVideo} disabled={!videoUrl.trim() || status === 'working'}>
               {status === 'working' ? (<><span className="spinner" /> {progress.current}</>) : (<><Icon name="plus" /> Add video</>)}
+            </button>
+          </div>
+        )}
+
+        {mode === 'batch' && (
+          <div className="space-y-3">
+            <div>
+              <label className="text-xs uppercase tracking-wider mb-2 block" style={{ color: 'var(--text-3)' }}>
+                YouTube video URLs — paste one per line (or comma-separated)
+              </label>
+              <textarea
+                value={batchInput}
+                onChange={e => setBatchInput(e.target.value)}
+                placeholder={`https://youtu.be/GV_gs9MX3LA\nhttps://youtu.be/GBjQJEEyNTE\nhttps://www.youtube.com/watch?v=...`}
+                className="input-base font-mono"
+                rows={8}
+                disabled={status === 'working'}
+                style={{ fontSize: '0.8rem', lineHeight: 1.5 }}
+              />
+              <div className="flex justify-between text-xs mt-1" style={{ color: 'var(--text-2)' }}>
+                <span>
+                  {parsedBatch.items?.length || 0} valid URL{(parsedBatch.items?.length || 0) === 1 ? '' : 's'} detected
+                  {parsedBatch.skipped?.length > 0 && (
+                    <span style={{ color: 'var(--danger)' }}> · {parsedBatch.skipped.length} skipped (unrecognized)</span>
+                  )}
+                </span>
+                <span>~30s per video</span>
+              </div>
+            </div>
+
+            <div>
+              <label className="text-xs uppercase tracking-wider mb-2 block" style={{ color: 'var(--text-3)' }}>
+                Batch name (optional)
+              </label>
+              <input
+                type="text"
+                value={batchName}
+                onChange={e => setBatchName(e.target.value)}
+                placeholder={`Batch import — ${new Date().toLocaleDateString()}`}
+                className="input-base"
+                disabled={status === 'working'}
+              />
+            </div>
+
+            <div className="text-xs flex items-start gap-2 p-3 rounded"
+                 style={{ color: 'var(--text-2)', background: 'rgba(212,163,115,0.06)', border: '1px solid rgba(212,163,115,0.18)' }}>
+              <Icon name="sparkles" size={14} className="mt-0.5 flex-shrink-0" style={{ color: 'var(--accent)' }} />
+              <span>Videos are fetched sequentially via the free Gemini path. Failures don't stop the batch — successful videos are still added to a single library entry. Run thumbnail OCR per video afterward from the video modal.</span>
+            </div>
+
+            {batchItems.length > 0 && (
+              <div className="card p-0 max-h-64 overflow-y-auto" style={{ borderColor: 'var(--border)' }}>
+                {batchItems.map((it, i) => (
+                  <div key={it.id} className="px-3 py-2 flex items-center gap-2 text-xs"
+                       style={{ borderTop: i === 0 ? 'none' : '1px solid var(--border)' }}>
+                    <span className="num flex-shrink-0" style={{ color: 'var(--text-3)', width: 22 }}>{i + 1}.</span>
+                    <span className="flex-shrink-0">
+                      {it.status === 'pending' && <span style={{ color: 'var(--text-3)' }}>○</span>}
+                      {it.status === 'working' && <span className="spinner" style={{ width: 10, height: 10 }} />}
+                      {it.status === 'done'    && <span style={{ color: 'var(--success)' }}>✓</span>}
+                      {it.status === 'failed'  && <span style={{ color: 'var(--danger)' }}>✗</span>}
+                    </span>
+                    <span className="font-mono flex-shrink-0" style={{ color: 'var(--text-2)', width: 100 }}>{it.id}</span>
+                    <span className="flex-1 truncate" style={{
+                      color: it.status === 'failed' ? 'var(--danger)' : 'var(--text-1)',
+                    }}>
+                      {it.title || it.error || (it.status === 'pending' ? '— queued' : it.status === 'working' ? '— fetching…' : '')}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {status === 'working' && progress.total > 0 && (
+              <div className="bar-track">
+                <div className="bar-fill" style={{ width: `${(progress.done / progress.total) * 100}%` }} />
+              </div>
+            )}
+            {error && <div className="text-sm p-3 rounded" style={{ color: 'var(--danger)', background: 'rgba(224,123,106,0.08)' }}>{error}</div>}
+
+            <button className="btn-primary w-full justify-center"
+                    onClick={handleAddBatch}
+                    disabled={(parsedBatch.items?.length || 0) === 0 || status === 'working'}>
+              {status === 'working'
+                ? <><span className="spinner" /> {progress.done}/{progress.total} done</>
+                : <><Icon name="plus" /> Add {parsedBatch.items?.length || 0} video{(parsedBatch.items?.length || 0) === 1 ? '' : 's'}</>}
             </button>
           </div>
         )}
