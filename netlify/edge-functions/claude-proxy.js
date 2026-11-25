@@ -15,11 +15,19 @@
 // MCP. If the request has `mcp_servers`, we force the Anthropic path and 501
 // gracefully if only Gemini is configured.
 
-const CORS_HEADERS = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Methods': 'POST, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type, x-user-api-key, anthropic-version',
-};
+const CORS_HEADERS = { Vary: 'Origin' };
+
+// Only pages of this site may use the server's keys. A browser always sends Origin with a POST.
+// This stops other websites. It does not stop a script that fakes the header, so set a spending limit too.
+function sameSite(req) {
+  try { return new URL(req.headers.get('origin')).host === new URL(req.url).host; }
+  catch { return false; }
+}
+function refused() {
+  return new Response(JSON.stringify({ error: { type: 'forbidden', message: 'This proxy only answers its own site.' } }), {
+    status: 403, headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' },
+  });
+}
 
 const GEMINI_MODEL = 'gemini-2.5-flash';
 
@@ -153,6 +161,7 @@ export default async (req) => {
       status: 405, headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' },
     });
   }
+  if (!sameSite(req)) return refused();
   const rawBody = await req.text();
   let parsed;
   try { parsed = JSON.parse(rawBody); }
@@ -161,6 +170,11 @@ export default async (req) => {
       status: 400, headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' },
     });
   }
+
+  const MAX_TOKENS = 8192;
+  if (!parsed || typeof parsed !== 'object') parsed = {};
+  if (!(parsed.max_tokens <= MAX_TOKENS)) parsed.max_tokens = MAX_TOKENS;
+  const safeBody = JSON.stringify(parsed);
 
   const wantsMCP = Array.isArray(parsed?.mcp_servers) && parsed.mcp_servers.length > 0;
   const clientKey = req.headers.get('x-user-api-key');
@@ -174,13 +188,13 @@ export default async (req) => {
         error: { type: 'mcp_needs_anthropic', message: 'MCP exports require ANTHROPIC_API_KEY (Gemini does not support MCP). Set it in Netlify env vars or paste an Anthropic key in Settings.' },
       }), { status: 501, headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' }});
     }
-    return callAnthropic(rawBody, key);
+    return callAnthropic(safeBody, key);
   }
 
   if (geminiKey) return callGemini(parsed, geminiKey);
-  if (anthropicKey) return callAnthropic(rawBody, anthropicKey);
+  if (anthropicKey) return callAnthropic(safeBody, anthropicKey);
   if (clientKey) {
-    if (clientKey.startsWith('sk-ant-')) return callAnthropic(rawBody, clientKey);
+    if (clientKey.startsWith('sk-ant-')) return callAnthropic(safeBody, clientKey);
     if (clientKey.startsWith('AIza')) return callGemini(parsed, clientKey);
   }
 

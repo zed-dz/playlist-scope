@@ -7,11 +7,19 @@
 // Sign up: https://supadata.ai
 // Set SUPADATA_API_KEY in Netlify env vars to enable.
 
-const CORS_HEADERS = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Methods': 'POST, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type, x-user-api-key',
-};
+const CORS_HEADERS = { Vary: 'Origin' };
+
+// Only pages of this site may use the server's keys. A browser always sends Origin with a POST.
+// This stops other websites. It does not stop a script that fakes the header, so set a spending limit too.
+function sameSite(req) {
+  try { return new URL(req.headers.get('origin')).host === new URL(req.url).host; }
+  catch { return false; }
+}
+function refused() {
+  return new Response(JSON.stringify({ error: { type: 'forbidden', message: 'This proxy only answers its own site.' } }), {
+    status: 403, headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' },
+  });
+}
 
 function envGet(name) {
   try {
@@ -29,6 +37,7 @@ export default async (req) => {
       status: 405, headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' },
     });
   }
+  if (!sameSite(req)) return refused();
 
   let body;
   try { body = await req.json(); }

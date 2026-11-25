@@ -6,12 +6,12 @@ on:
   pull_request:
     branches: [main]
 
+permissions:
+  contents: read
+
 jobs:
   build-and-test:
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: playlist-scope-app
     steps:
       - uses: actions/checkout@v4
 
@@ -19,7 +19,6 @@ jobs:
         with:
           node-version: 22
           cache: npm
-          cache-dependency-path: playlist-scope-app/package-lock.json
 
       - name: Install
         run: npm ci
@@ -29,15 +28,15 @@ jobs:
 
       - name: Install Playwright
         run: |
-          npx -y playwright@1.56 install --with-deps chromium
+          pip install playwright
+          python3 -m playwright install --with-deps chromium
 
       - name: Static serve + Playwright QA
         run: |
           python3 -m http.server 4173 --bind 127.0.0.1 --directory dist > /tmp/srv.log 2>&1 &
           sleep 2
           curl -fsS http://127.0.0.1:4173/ -o /dev/null
-          # Run the same QA suite that catches all 0-findings cases
-          python3 ../scripts/qa.py http://127.0.0.1:4173
+          python3 scripts/qa.py http://127.0.0.1:4173
         shell: bash
 
       - name: Upload dist artifact
@@ -45,11 +44,12 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: playlist-scope-dist
-          path: playlist-scope-app/dist
+          path: dist
 
   deploy-netlify:
     needs: build-and-test
-    if: github.ref == 'refs/heads/main'
+    # Off until the repo variable DEPLOY_NETLIFY is set to 1.
+    if: github.ref == 'refs/heads/main' && vars.DEPLOY_NETLIFY == '1'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

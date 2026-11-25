@@ -17,7 +17,9 @@ with sync_playwright() as p:
     errors, console_errs = [], []
     page.on("pageerror", lambda e: errors.append(str(e)))
     page.on("console", lambda m: console_errs.append(m.text)
-            if m.type == "error" and "compute-pressure" not in m.text else None)
+            if m.type == "error" and "compute-pressure" not in m.text
+            # a video removed from YouTube loses its picture: not a fault of the app
+            and not (m.location or {}).get("url", "").startswith("https://i.ytimg.com/") else None)
 
     page.goto(URL, wait_until="networkidle", timeout=30000)
     page.wait_for_selector("header", timeout=15000)

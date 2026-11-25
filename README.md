@@ -1,12 +1,44 @@
 # Playlist Scope
 
-A React + Vite app for analyzing YouTube playlists. Demo data, full per-video
-transcripts, an Ask Claude search across the playlist, MCP exports to Notion /
-Drive / Gmail, six-report studio per playlist, multi-language support
-(EN / AR / FR / ES) with TTS + translation, and a built-in AI agent that
-auto-enriches partial playlists with full transcripts via web search.
+**Search, compare and question a whole YouTube playlist in one place.**
 
-**Live:** https://playlist-scope.netlify.app
+**[Try the demo](https://playlist-scope.netlify.app)**. It opens with a sample playlist of 79 videos. No account and no key needed to look around.
+
+## Who it is for
+
+- You save long playlists and never find the moment you remember.
+- You want to search every transcript at once, and compare channels.
+- You want your notes, quotes and chapters next to the video.
+
+## Try it on your PC
+
+You need Node 22.
+
+```bash
+git clone https://github.com/zed-dz/playlist-scope
+cd playlist-scope
+npm install
+npm run dev
+```
+
+Open http://localhost:5173. It starts in demo mode.
+
+## What it does
+
+- Search inside every transcript in a playlist.
+- See tools, links and channels mentioned across videos.
+- Ask questions about one video or the whole playlist (needs a key).
+- Write notes, make quotes and chapters, print reports.
+- English, Arabic, French and Spanish, with text to speech.
+- Export to Notion, Drive or Gmail (needs an Anthropic key).
+
+## Privacy and limits
+
+- Your library and notes stay in your browser.
+- A key you paste in Settings is stored in your browser in plain text. It is sent to the AI service, or to the proxy of the site you are on. Use your own copy of the app for that.
+- AI answers can be wrong. Check them against the video.
+- The demo text belongs to the people who made the videos. It is there to show the app.
+- Videos from a playlist link come with titles only, until you add transcripts.
 
 ---
 
@@ -129,8 +161,7 @@ playlist-scope-app/
 
 Storage: `window.storage` (artifact) → `localStorage` → in-memory fallback.
 
-Ingest server: Supabase Edge Function at
-`https://dccrfsxwmyqhghvtnabl.supabase.co/functions/v1/playlist-ingest`.
+Ingest server: optional. Set `VITE_INGEST_URL` to your own. Without it the app runs in demo mode and adds playlists through web search.
 
 ## QA
 
