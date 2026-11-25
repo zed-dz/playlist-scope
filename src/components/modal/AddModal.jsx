@@ -138,6 +138,11 @@ export default function AddModal({ onClose, onAdd, defaultTab = 'video' }) {
         <p className="text-sm mb-5" style={{ color: 'var(--text-2)' }}>
           Three ways to bring content in: paste a single video URL, paste a playlist URL, or upload a JSON bundle from your Python pipeline.
         </p>
+        {!INGEST_URL && mode === 'playlist' && (
+          <div className="text-xs mb-4 p-2 rounded" style={{ color: 'var(--text-2)', border: '1px solid rgba(212,163,115,0.2)' }}>
+            Demo mode: no ingest server is set. Playlists are read through web search, which needs an API key in Settings.
+          </div>
+        )}
         {INGEST_URL && (
           <div className="text-xs mb-4 p-2 rounded" style={{ color: 'var(--text-2)', background: 'rgba(132,204,138,0.06)', border: '1px solid rgba(132,204,138,0.2)' }}>
             <Icon name="check" size={12} className="inline mr-1" /> Ingest server configured — Playlist URL will use the full Python pipeline server-side.
